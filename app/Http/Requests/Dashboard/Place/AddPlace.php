@@ -6,8 +6,6 @@ use App\Http\Requests\Base\BaseRequest;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Validation\Rule;
 
-
-
 class AddPlace extends BaseRequest
 {
     /**
@@ -23,7 +21,6 @@ class AddPlace extends BaseRequest
      *
      * @return array<string, ValidationRule|array<mixed>|string>
      */
-
     public function rules(): array
     {
 
@@ -77,8 +74,9 @@ class AddPlace extends BaseRequest
 
             'image' => [
                 'required',
-                'file',
+                'image',
                 'mimes:jpg,jpeg,png,webp',
+                'dimensions:max_width=4096,max_height=4096',
                 'max:5120',
             ],
 
@@ -86,18 +84,6 @@ class AddPlace extends BaseRequest
                 'nullable',
                 'integer',
                 'in:0,1',
-            ],
-
-            'created_by' => [
-                'required',
-                'integer',
-                'exists:users,id'
-            ],
-
-            'updated_by' => [
-                'required',
-                'integer',
-                'exists:users,id'
             ],
 
             // 'product_images.*.image' => [
@@ -118,7 +104,6 @@ class AddPlace extends BaseRequest
             //     'integer',
             //     'min:0',
             // ],
-
 
             // Variants
             // 'product_variants' => [
@@ -181,8 +166,6 @@ class AddPlace extends BaseRequest
             //     'in:0,1',
             // ],
 
-
         ];
     }
-
 }

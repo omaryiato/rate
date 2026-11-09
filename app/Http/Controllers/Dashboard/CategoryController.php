@@ -2,22 +2,22 @@
 
 namespace App\Http\Controllers\Dashboard;
 
-use App\Http\Controllers\Controller;
-use App\Http\Requests\Dashboard\Category\DeleteCategory;
-use App\Services\Dashboard\CategoryService;
-use App\Http\Resources\CategoryResource;
 use App\Helpers\ResponseHelper;
+use App\Http\Controllers\Controller;
 use App\Http\Requests\Dashboard\Category\AddCategory;
+use App\Http\Requests\Dashboard\Category\DeleteCategory;
 use App\Http\Requests\Dashboard\Category\UpdateCategory;
+use App\Http\Resources\CategoryResource;
 use App\Models\Category;
-use Exception;
+use App\Services\Dashboard\CategoryService;
+use Illuminate\Http\Request;
 
 class CategoryController extends Controller
 {
-
     protected $service;
 
-    public function __construct(CategoryService $service) {
+    public function __construct(CategoryService $service)
+    {
         $this->service = $service;
     }
 
@@ -47,71 +47,38 @@ class CategoryController extends Controller
 
     public function store(AddCategory $request)
     {
-        try{
-            return ResponseHelper::success(
-                new CategoryResource($this->service->create($request)),
-                [
-                    'en' => trans('validation.data_added', [], 'en'),
-                    'ar' => trans('validation.data_added', [], 'ar'),
-                ],
-                201);
-
-        } catch(Exception $exception){
-            return ResponseHelper::error(
-                [
-                    'en' => trans('validation.exception_error', [], 'en'),
-                    'ar' => trans('validation.exception_error', [], 'ar'),
-                ],
-                $exception->getMessage(),
-                500);
-        }
+        return ResponseHelper::success(
+            new CategoryResource($this->service->create($request->validated(), (int) $request->user()->id, $request->file('image'))),
+            [
+                'en' => trans('validation.data_added', [], 'en'),
+                'ar' => trans('validation.data_added', [], 'ar'),
+            ],
+            201);
     }
+
     public function update(UpdateCategory $request, Category $category)
     {
-        try{
-
-            return ResponseHelper::success(
-                new CategoryResource(
-                    $this->service->update(
-                        $request, $category
+        return ResponseHelper::success(
+            new CategoryResource(
+                $this->service->update(
+                    $request->validated(), $category, (int) $request->user()->id, $request->file('image')
                 )),
-                [
-                    'en' => trans('validation.data_updated', [], 'en'),
-                    'ar' => trans('validation.data_updated', [], 'ar'),
-                ],
-                201);
-
-        } catch (Exception $exception){
-            return ResponseHelper::error(
-                [
-                    'en' => trans('validation.exception_error', [], 'en'),
-                    'ar' => trans('validation.exception_error', [], 'ar'),
-                ],
-                $exception->getMessage(),
-                500);
-        }
+            [
+                'en' => trans('validation.data_updated', [], 'en'),
+                'ar' => trans('validation.data_updated', [], 'ar'),
+            ],
+            200);
     }
 
-    public function destroy(DeleteCategory $request, Category $category)
+    public function destroy(Request $request, Category $category)
     {
-        try{
-
-            return  ResponseHelper::success(
-                $this->service->delete($request->validated(), $category),
-                [
-                    'en' => trans('validation.data_deleted', [], 'en'),
-                    'ar' => trans('validation.data_deleted', [], 'ar'),
-                ],
-                200);
-        } catch(Exception $exception){
-            return ResponseHelper::error(
-                [
-                    'en' => trans('validation.exception_error', [], 'en'),
-                    'ar' => trans('validation.exception_error', [], 'ar'),
-                ],
-                $exception->getMessage(),
-                500);
-        }
+        return ResponseHelper::success(
+            new CategoryResource($this->service->delete($category, (int) $request->user()->id)),
+            [
+                'en' => trans('validation.data_deleted', [], 'en'),
+                'ar' => trans('validation.data_deleted', [], 'ar'),
+            ],
+            200);
 
     }
 }

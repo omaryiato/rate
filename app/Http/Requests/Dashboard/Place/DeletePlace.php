@@ -4,9 +4,6 @@ namespace App\Http\Requests\Dashboard\Place;
 
 use App\Http\Requests\Base\BaseRequest;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Validation\Rule;
-
-
 
 class DeletePlace extends BaseRequest
 {
@@ -23,20 +20,11 @@ class DeletePlace extends BaseRequest
      *
      * @return array<string, ValidationRule|array<mixed>|string>
      */
-
     public function rules(): array
     {
 
-
         return [
-
-            'updated_by' => [
-                'required',
-                'integer',
-                'exists:users,id'
-            ],
 
         ];
     }
-
 }

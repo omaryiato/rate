@@ -1,66 +1,50 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Repositories\Dashboard;
 
 use App\Models\User;
-
-
+use Illuminate\Database\Eloquent\Collection;
 
 class UserRepository
 {
-
-    // getAll Funtion To Get Users List
-    public function getAll()
+    public function getAll(): Collection
     {
-        return User::with([
-            'reviews',
-        ])->get();
+        return User::select(['id', 'full_name', 'user_name', 'phone_number', 'email_address', 'status', 'type', 'avatar', 'created_at', 'updated_at', 'deleted_at'])
+            ->whereNull('deleted_at')->with('reviews.user:id,full_name')->orderBy('id')->get();
     }
 
-    // getDetails Funtion To Get User Details
-    public function getDetails(User $user)
+    public function getDetails(User $user): User
     {
-        return $user->load([
-            'reviews',
-        ]);
+        return $user->load('reviews.user:id,full_name');
     }
 
-    // create Funtion To Add new User
-    public function create(array $request)
+    public function create(array $attributes): User
     {
-        return User::create($request);
+        return User::create($attributes);
     }
 
-    // update Funtion To Update User info
-    public function update(User $user, array $request)
+    public function update(User $user, array $attributes): User
     {
-        $user->update($request);
+        $user->update($attributes);
+
         return $user;
     }
 
-    public function deactivate(User $user, array $request){
-        // $user->branches()->update([
-        //     'status' => 0,
-        //     'updated_by' => $request['updated_by'],
-        //     'deleted_at' => now(),
-        // ]);
-        $user->update($request);
-        return $user;
+    /** Serialize credential changes with login's lock on the same user row. */
+    public function lockById(int $id): User
+    {
+        return User::whereKey($id)->lockForUpdate()->firstOrFail();
     }
 
-
-    // delete Funtion To Delete User
-    public function delete(array $request, User $user)
+    /** Preserve the account row, avatar, reviews and every other dependent record. */
+    public function delete(User $user): User
     {
+        $user->status = 0;
+        $user->deleted_at = now();
+        $user->save();
 
-        $user->update([
-            'status' => 0,
-            // 'updated_by' => $request['updated_by'],
-            'deleted_at' => now(),
-        ]);
         return $user;
-        // $user->delete();
-        // return $user;
     }
 }
-

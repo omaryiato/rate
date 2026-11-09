@@ -17,6 +17,9 @@ return [
 
     'default' => env('CACHE_STORE', 'database'),
 
+    // Single-server limiter; select a shared store here before scaling to multiple servers.
+    'limiter' => 'file',
+
     /*
     |--------------------------------------------------------------------------
     | Cache Stores

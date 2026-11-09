@@ -4,8 +4,6 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
-use App\Http\Resources\ProductImageResource;
-use App\Http\Resources\ProductVariantResource;
 
 class PlaceResource extends JsonResource
 {
@@ -23,14 +21,14 @@ class PlaceResource extends JsonResource
             'ar_name' => $this->ar_name ?? null,
             'en_description' => $this->en_description ?? null,
             'ar_description' => $this->ar_description ?? null,
-            'image' =>  asset(str_replace('//', '/', $this->image)) ?? null,
+            'image' => $this->image ? asset(str_replace('//', '/', $this->image)) : null,
             'slug' => $this->slug ?? null,
             'website_url' => $this->website_url ?? null,
             'status' => $this->status ?? null,
 
             'category_id' => $this->category_id ?? null,
-            'category_en_name' => $this->category?->en_name ?? null,
-            'category_ar_name' => $this->category?->ar_name ?? null,
+            'category_en_name' => $this->whenLoaded('category', fn () => $this->category?->en_name),
+            'category_ar_name' => $this->whenLoaded('category', fn () => $this->category?->ar_name),
 
             'created_by' => $this->created_by ?? null,
             'updated_by' => $this->updated_by ?? null,

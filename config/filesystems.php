@@ -38,6 +38,14 @@ return [
             'report' => false,
         ],
 
+        // Preserve existing public documents URLs while using the Laravel filesystem.
+        'documents' => [
+            'driver' => 'local',
+            'root' => public_path('documents'),
+            'visibility' => 'public',
+            'throw' => true,
+        ],
+
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),

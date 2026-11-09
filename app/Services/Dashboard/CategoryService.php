@@ -1,158 +1,119 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Dashboard;
 
 use App\Models\Category;
 use App\Repositories\Dashboard\CategoryRepository;
+use App\Services\ImageStorageService;
+use App\Services\LoggingService;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\File;
-use Intervention\Image\Format;
-use Intervention\Image\Laravel\Facades\Image;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
+use Throwable;
 
 class CategoryService
 {
+    private const FIELDS = ['en_name', 'ar_name', 'description', 'status', 'slug', 'icone', 'sort'];
 
-    protected $repository;
-    public function __construct(CategoryRepository $repository) {
-        $this->repository = $repository;
-    }
+    public function __construct(
+        private readonly CategoryRepository $repository,
+        private readonly PlaceService $placeService,
+        private readonly ImageStorageService $images,
+        private readonly LoggingService $logging,
+    ) {}
 
-    public function getAll(){
+    public function getAll(): Collection
+    {
         return $this->repository->getAll();
     }
 
-    public function getDetails(Category $category){
+    public function getDetails(Category $category): Category
+    {
+        $this->ensurePresent($category);
+
         return $this->repository->getDetails($category);
     }
 
-    public function create($request)
+    public function create(array $data, int $actorId, ?UploadedFile $image = null): Category
     {
-        $request = $request->validated();
-
-        if ($request->hasFile('image')) {
-            $image = $this->uploadImage(
-                $request->file('image'),
-                $request['en_name']
-            );
-
-            $request['image'] = $image;
+        $attributes = Arr::only($data, self::FIELDS);
+        $attributes['status'] = $attributes['status'] ?? 1;
+        $attributes['sort'] = $attributes['sort'] ?? 0;
+        $attributes['created_by'] = $actorId;
+        $attributes['updated_by'] = $actorId;
+        $path = $image ? $this->images->store($image, 'categories') : null;
+        if ($path) {
+            $attributes['image'] = $path;
         }
+        try {
+            $category = $this->repository->create($attributes);
+        } catch (Throwable $exception) {
+            $this->images->delete($path);
+            throw $exception;
+        }
+        $this->logging->success('CreateCategory', $actorId);
 
-        return $this->repository->create(
-            $this->prepareRequestInfo($request)
-        );
+        return $category;
     }
 
-    public function update(object $request, Category $category)
+    public function update(array $data, Category $category, int $actorId, ?UploadedFile $image = null): Category
     {
-        $request = $request->validated();
-
-        if ($request->hasFile('image')) {
-
-            // Delete old image
-            if ($category->image) {
-
-                $old_path = public_path($category->image);
-
-                if (File::exists($old_path)) {
-                    File::delete($old_path);
-                }
+        $this->ensurePresent($category);
+        $attributes = Arr::only($data, self::FIELDS);
+        foreach (['status', 'sort'] as $field) {
+            if (array_key_exists($field, $attributes) && $attributes[$field] === null) {
+                unset($attributes[$field]);
             }
-
-
-            // Upload new image
-            $request['image'] = $this->uploadImage(
-                $request->file('image'),
-                $request['en_name']
-            );
-
-        } else {
-            // keep old image
-            $request['image'] = $category->image;
         }
-
-        $request['slug'] = $request['slug'] ? $request['slug'] : $category->slug;
-        $request['icone'] = $request['icone'] ? $request['icone'] : $category->icone;
-
-        if($request['status'] == 0){
-            return $this->repository->deactivate(
-                $category,
-                $this->prepareRequestInfo($request)
-            );
-
-        } else {
-            return $this->repository->update(
-                $category,
-                $this->prepareRequestInfo($request)
-            );
+        $attributes['updated_by'] = $actorId;
+        $oldPath = $category->image;
+        $path = $image ? $this->images->store($image, 'categories') : null;
+        if ($path) {
+            $attributes['image'] = $path;
         }
+        try {
+            if (isset($attributes['status']) && (int) $attributes['status'] === 0) {
+                $category = DB::transaction(function () use ($category, $attributes, $actorId): Category {
+                    $this->placeService->deactivateByCategory((int) $category->id, $actorId);
 
+                    return $this->repository->update($category, $attributes);
+                });
+            } else {
+                $category = $this->repository->update($category, $attributes);
+            }
+        } catch (Throwable $exception) {
+            $this->images->delete($path);
+            throw $exception;
+        }
+        if ($path) {
+            $this->images->delete($oldPath);
+        }
+        $this->logging->success('UpdateCategory', $actorId);
 
+        return $category;
     }
 
-    public function delete(array $request, Category $category){
-        return $this->repository->delete($request, $category);
-    }
-
-    public function uploadImage(UploadedFile $file, string $en_name)
+    public function delete(Category $category, int $actorId): Category
     {
-        $extension = $file->getClientOriginalExtension();
+        $this->ensurePresent($category);
+        $category = DB::transaction(function () use ($category, $actorId): Category {
+            $this->placeService->deactivateByCategory((int) $category->id, $actorId, true);
 
-        $file_name = str_replace(' ', '_', $en_name) . '.' . $extension;
+            return $this->repository->delete($category, $actorId);
+        });
+        $this->logging->success('DeleteCategory', $actorId);
 
-        $folder_path = public_path("documents/categories");
-
-
-        if (!File::exists($folder_path)) {
-            File::makeDirectory($folder_path, 0755, true);
-        }
-
-        $webp_name = pathinfo($file_name, PATHINFO_FILENAME) . '.webp';
-
-        $image = Image::decode($file);
-
-        // encode to webp
-        $encoded = $image->encodeUsingFormat(
-            Format::WEBP,
-            quality: 85
-        );
-
-        // save encoded image
-        $encoded->save("{$folder_path}/{$webp_name}");
-
-
-        // $file->move($folder_path, $file_name);
-
-
-        return "documents/categories/{$webp_name}";
+        return $category;
     }
 
-    public function prepareRequestInfo(array $request_info)
+    private function ensurePresent(Category $category): void
     {
-
-        $request_data = [
-            'en_name' => $request_info['en_name'] ?? null,
-            'ar_name' => $request_info['ar_name'] ?? null,
-            'description' => $request_info['description'] ?? null,
-            'image' => $request_info['image'] ?? null,
-            'status' => $request_info['status'] ?? 1,
-            'slug' => $request_info['slug'] ?? null,
-            'icone' => $request_info['icone'] ?? null,
-            'sort' => $request_info['sort'] ?? 0,
-        ];
-
-
-        if (isset($request_info['created_by'])) {
-            $request_data['created_by'] = $request_info['created_by'];
+        if ($category->deleted_at !== null) {
+            throw (new ModelNotFoundException)->setModel(Category::class);
         }
-
-
-        if (isset($request_info['updated_by'])) {
-            $request_data['updated_by'] = $request_info['updated_by'];
-        }
-
-
-        return $request_data;
     }
-
 }

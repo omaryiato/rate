@@ -16,7 +16,8 @@ class FeedbackResource extends JsonResource
     {
         return [
             'id' => $this->id ?? null,
-            
+            'subject' => $this->subject ?? null,
+            'description' => $this->description ?? null,
         ];
     }
 }

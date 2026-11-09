@@ -4,8 +4,6 @@ namespace App\Http\Requests\Dashboard\Category;
 
 use App\Http\Requests\Base\BaseRequest;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Illuminate\Validation\Rule;
-
 
 class DeleteCategory extends BaseRequest
 {
@@ -25,14 +23,8 @@ class DeleteCategory extends BaseRequest
     public function rules(): array
     {
 
-
         return [
 
-            'updated_by' => [
-                'required',
-                'integer',
-                'exists:users,id'
-            ],
         ];
     }
 }

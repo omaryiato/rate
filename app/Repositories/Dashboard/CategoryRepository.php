@@ -1,75 +1,52 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Repositories\Dashboard;
 
-
 use App\Models\Category;
+use Illuminate\Database\Eloquent\Collection;
 
-
-class CategoryRepository {
-
-    public function getAll()
+class CategoryRepository
+{
+    private function relationships(): array
     {
-        return Category::with([
-            'palces',
-            // 'places.branches',
-            // 'places.branches.reviews',
-            'places.reviews',
-        ])->get();
+        return [
+            'places' => fn ($query) => $query->whereNull('deleted_at'),
+            'places.category',
+            'places.reviews.user:id,full_name',
+        ];
     }
 
-    public function getDetails(Category $category){
-        return $category->load([
-            'palces',
-            // 'places.branches',
-            // 'places.branches.reviews',
-            'places.reviews',
-        ]);
+    public function getAll(): Collection
+    {
+        return Category::whereNull('deleted_at')->with($this->relationships())->orderBy('id')->get();
     }
 
-    public function create(array $request){
-        return Category::create($request);
+    public function getDetails(Category $category): Category
+    {
+        return $category->load($this->relationships());
     }
 
-    public function update(Category $category, array $request){
-        $category->update($request);
+    public function create(array $attributes): Category
+    {
+        return Category::create($attributes);
+    }
+
+    public function update(Category $category, array $attributes): Category
+    {
+        $category->update($attributes);
+
         return $category;
     }
 
-    public function deactivate(Category $category, array $request){
-        // $category->places()->branches()->update([
-        //     'status' => 0,
-        //     'updated_by' => $request['updated_by'],
-        //     'deleted_at' => now(),
-        // ]);
-        $category->places()->update([
-            'status' => 0,
-            'updated_by' => $request['updated_by'],
-        ]);
-        $category->update($request);
+    public function delete(Category $category, int $actorId): Category
+    {
+        $category->status = 0;
+        $category->updated_by = $actorId;
+        $category->deleted_at = now();
+        $category->save();
+
         return $category;
     }
-
-    public function delete(array $request, Category $category){
-        // $category->places()->branches()->update([
-        //     'status' => 0,
-        //     'updated_by' => $request['updated_by'],
-        //     'deleted_at' => now(),
-        // ]);
-        $category->places()->update([
-            'status' => 0,
-            'updated_by' => $request['updated_by'],
-            'deleted_at' => now(),
-        ]);
-        $category->update([
-            'status' => 0,
-            'updated_by' => $request['updated_by'],
-            'deleted_at' => now(),
-        ]);
-        return $category;
-
-        // $category->delete();
-        // return $category;
-    }
-
 }

@@ -4,6 +4,7 @@ namespace App\Http\Requests\Client;
 
 use App\Http\Requests\Base\BaseRequest;
 use Illuminate\Contracts\Validation\ValidationRule;
+use Illuminate\Validation\Rule;
 
 class Review extends BaseRequest
 {
@@ -23,24 +24,18 @@ class Review extends BaseRequest
     public function rules(): array
     {
         return [
-            'user_id' => [
-                'bail',
-                'required',
-                'integer',
-                'exists:users,id'
-            ],
             'place_id' => [
                 'bail',
                 'required',
                 'integer',
-                'exists:places,id'
+                Rule::exists('places', 'id')->where('status', 1),
             ],
             'comment' => [
                 'bail',
                 'required_without:rating',
                 'nullable',
                 'string',
-                'max:1000'
+                'max:1000',
             ],
             'rating' => [
                 'bail',

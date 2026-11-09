@@ -1,134 +1,137 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Dashboard;
 
 use App\Models\User;
 use App\Repositories\Dashboard\UserRepository;
+use App\Services\Auth\AuthService;
+use App\Services\ImageStorageService;
+use App\Services\LoggingService;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\File;
-use Intervention\Image\Format;
-use Intervention\Image\Laravel\Facades\Image;
+use Throwable;
 
 class UserService
 {
+    private const FIELDS = ['full_name', 'user_name', 'phone_number', 'email_address', 'password', 'status', 'type'];
 
-    protected $repository;
+    public function __construct(
+        private readonly UserRepository $repository,
+        private readonly AuthService $authService,
+        private readonly ImageStorageService $images,
+        private readonly LoggingService $logging,
+    ) {}
 
-    public function __construct(UserRepository $repository)
+    public function getAll(): Collection
     {
-        $this->repository = $repository;
+        return $this->repository->getAll();
     }
 
-    // getAll Funtion To Get Users List
-    public function getAll()
+    public function getDetails(User $user): User
     {
-        return  $this->repository->getAll();
+        $this->ensurePresent($user);
+
+        return $this->repository->getDetails($user);
     }
 
-    // getDetails Funtion To Get User Details
-    public function getDetails(User  $user)
+    public function create(array $data, int $actorId, ?UploadedFile $avatar = null): User
     {
-
-        return  $this->repository->getDetails($user);
-    }
-
-    // create Funtion To Add new User
-    public function create( $request)
-    {
-        if ($request->hasFile('avatar')) {
-            $avatar = $this->uploadImage(
-                $request->file('avatar'),
-                $request['user_name']
-            );
-
-            $request['avatar'] = $avatar;
+        $attributes = $this->prepareAttributes($data);
+        $attributes['status'] = $attributes['status'] ?? 1;
+        $attributes['type'] = $attributes['type'] ?? 0;
+        $path = $avatar ? $this->images->store($avatar, 'users') : null;
+        if ($path) {
+            $attributes['avatar'] = $path;
         }
+        try {
+            $user = $this->repository->create($attributes);
+        } catch (Throwable $exception) {
+            $this->images->delete($path);
+            throw $exception;
+        }
+        $this->logging->success('CreateUser', $actorId);
 
-        return $this->repository->create($this->prepareRequestInfo($request));
+        return $user;
     }
 
-    // update Funtion To Update User info
-    public function update( $request, User $user)
+    public function update(array $data, User $user, int $actorId, ?UploadedFile $avatar = null): User
     {
-        if ($request->hasFile('avatar')) {
+        $this->ensurePresent($user);
+        $attributes = $this->prepareAttributes($data);
+        $oldPath = $user->avatar;
+        $path = $avatar ? $this->images->store($avatar, 'users') : null;
+        if ($path) {
+            $attributes['avatar'] = $path;
+        }
+        $revokeTokens = isset($attributes['password']) || (isset($attributes['status']) && (int) $attributes['status'] === 0);
+        try {
+            if ($revokeTokens) {
+                // The service owns both writes; token failure must roll back the user change.
+                $user = DB::transaction(function () use ($user, $attributes): User {
+                    $lockedUser = $this->repository->lockById((int) $user->id);
+                    $this->ensurePresent($lockedUser);
+                    $updatedUser = $this->repository->update($lockedUser, $attributes);
+                    $this->authService->revokeTokens($updatedUser);
 
-            // Delete old avatar
-            if ($user->avatar) {
-
-                $old_path = public_path($user->avatar);
-
-                if (File::exists($old_path)) {
-                    File::delete($old_path);
-                }
+                    return $updatedUser;
+                });
+            } else {
+                $user = $this->repository->update($user, $attributes);
             }
+        } catch (Throwable $exception) {
+            $this->images->delete($path);
+            throw $exception;
+        }
+        if ($path) {
+            $this->images->delete($oldPath);
+        }
+        $this->logging->success('UpdateUser', $actorId);
 
-            // Upload new avatar
-            $request['avatar'] = $this->uploadImage(
-                $request->file('avatar'),
-                $request['user_name']
-            );
+        return $user;
+    }
 
-        } else {
-            // keep old avatar
-            $request['avatar'] = $user->avatar;
+    public function delete(User $user, int $actorId): User
+    {
+        $this->ensurePresent($user);
+        $user = DB::transaction(function () use ($user): User {
+            $lockedUser = $this->repository->lockById((int) $user->id);
+            $this->ensurePresent($lockedUser);
+            $deletedUser = $this->repository->delete($lockedUser);
+            $this->authService->revokeTokens($deletedUser);
+
+            return $deletedUser;
+        });
+        $this->logging->success('DeleteUser', $actorId);
+
+        return $user;
+    }
+
+    /** Omitted fields stay untouched; an empty password never clears the existing hash. */
+    private function prepareAttributes(array $data): array
+    {
+        $attributes = Arr::only($data, self::FIELDS);
+        foreach (['status', 'type', 'password'] as $field) {
+            if (array_key_exists($field, $attributes) && ($attributes[$field] === null || $attributes[$field] === '')) {
+                unset($attributes[$field]);
+            }
+        }
+        if (isset($attributes['password'])) {
+            $attributes['password'] = Hash::make($attributes['password']);
         }
 
-        return $this->repository->update($user, $this->prepareRequestInfo($request));
+        return $attributes;
     }
 
-    // delete Funtion To Delete User
-    public function delete(array $request, User $user)
+    private function ensurePresent(User $user): void
     {
-        return $this->repository->delete($request, $user);
-    }
-
-    public function prepareRequestInfo(array $request_info)
-    {
-
-        $request_data = [
-            'full_name' => $request_info['full_name'] ?? null,
-            'user_name' => $request_info['user_name'] ?? null,
-            'phone_number' => $request_info['phone_number'] ?? null,
-            'email_address' => $request_info['email_address'] ?? null,
-            'password' => isset($request_info['password'])
-                    ? Hash::make($request_info['password'])
-                    : null,
-            'status' => $request_info['status'] ?? null,
-            'type' => $request_info['type'] ?? null,
-            'avatar' => $request_info['avatar'] ?? null,
-        ];
-
-        return $request_data;
-    }
-
-    public function uploadImage(array $request, string $user_name)
-    {
-
-        $user_name = str_replace(' ', '_', strtolower($user_name));
-        $extension = $request['avatar']->getClientOriginalExtension();
-        $file_name = "{$user_name}_" . uniqid() . ".{$extension}";
-
-        $path = public_path("documents/users/{$user_name}");
-
-        if (!File::exists($path)) {
-            File::makeDirectory($path, 0755, true);
+        if ($user->deleted_at !== null) {
+            throw (new ModelNotFoundException)->setModel(User::class);
         }
-
-        $webp_name = pathinfo($file_name, PATHINFO_FILENAME) . '.webp';
-
-        $avatar = Image::decode($request['avatar']);
-
-        // encode to webp
-        $encoded = $avatar->encodeUsingFormat(
-            Format::WEBP,
-            quality: 85
-        );
-
-        // save encoded image
-        $encoded->save("{$path}/{$webp_name}");
-
-        return "documents/users/{$user_name}/{$webp_name}";
     }
-
 }
-

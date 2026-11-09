@@ -1,165 +1,112 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Dashboard;
 
 use App\Models\Place;
 use App\Repositories\Dashboard\PlaceRepository;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\File;
-use Intervention\Image\Format;
-use Intervention\Image\Laravel\Facades\Image;
-
+use App\Services\ImageStorageService;
+use App\Services\LoggingService;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Arr;
+use Throwable;
 
 class PlaceService
 {
+    private const FIELDS = ['category_id', 'en_name', 'ar_name', 'en_description', 'ar_description', 'slug', 'website_url', 'status'];
 
-    protected $repository;
-    public function __construct(PlaceRepository $repository,)
+    public function __construct(
+        private readonly PlaceRepository $repository,
+        private readonly ImageStorageService $images,
+        private readonly LoggingService $logging,
+    ) {}
+
+    public function getAll(): Collection
     {
-        $this->repository = $repository;
+        return $this->repository->getAll();
     }
 
-    // getAll Funtion To Get Product List
-    public function getAll()
+    public function getDetails(Place $place): Place
     {
-        return  $this->repository->getAll();
-    }
+        $this->ensurePresent($place);
 
-    // getDetails Funtion To Get Product Details
-    public function getDetails(Place $place)
-    {
         return $this->repository->getDetails($place);
     }
 
-    // create Funtion To Add new Product
-    public function create($request)
+    public function create(array $data, int $actorId, ?UploadedFile $image = null): Place
     {
-        return DB::transaction(function () use ($request) {
-
-            if ($request->hasFile('image')) {
-                $image = $this->uploadImage(
-                    $request->file('image'),
-                    $request['en_name']
-                );
-
-                $request['image'] = $image;
-            }
-
-            return $this->repository->create($this->prepareRequestInfo($request));
-        });
-    }
-
-    public function update($request, Place $place)
-    {
-        $request = $request->validated();
-        return DB::transaction(function () use ($request, $place) {
-            if ($request->hasFile('image')) {
-
-                // Delete old image
-                if ($place->image) {
-
-                    $old_path = public_path($place->image);
-
-                    if (File::exists($old_path)) {
-                        File::delete($old_path);
-                    }
-                }
-
-
-                // Upload new image
-                $request['image'] = $this->uploadImage(
-                    $request->file('image'),
-                    $request['en_name']
-                );
-
-            } else {
-                // keep old image
-                $request['image'] = $place->image;
-            }
-
-            $request['slug'] = $request['slug'] ? $request['slug'] : $place->slug;
-            $request['website_url'] = $request['website_url'] ? $request['website_url'] : $place->website_url;
-
-            if($request['status'] == 0){
-                return  $this->repository->deactivate(
-                    $place,
-                    $this->prepareRequestInfo($request)
-                );
-
-
-            } else {
-                return $this->repository->update(
-                    $place,
-                    $this->prepareRequestInfo($request)
-                );
-            }
-        });
-    }
-
-
-    public function prepareRequestInfo(array $product_request)
-    {
-        $request_data = [
-            'category_id' => $request['category_id'] ?? null,
-            'en_name' => $request['en_name'] ?? null,
-            'ar_name' => $request['ar_name'] ?? null,
-            'en_description' => $request['en_description'] ?? null,
-            'ar_description' => $request['ar_description'] ?? null,
-            'slug' => $request['slug'] ?? null,
-            'website_url' => $request['website_url'] ?? null,
-            'image' => $request['image'] ?? null,
-            'status' => $request['status'] ?? 1,
-        ];
-
-        if (isset($product_request['created_by'])) {
-            $request_data['created_by'] = $product_request['created_by'];
+        $attributes = Arr::only($data, self::FIELDS);
+        $attributes['status'] = $attributes['status'] ?? 1;
+        $attributes['created_by'] = $actorId;
+        $attributes['updated_by'] = $actorId;
+        $path = $image ? $this->images->store($image, 'places') : null;
+        if ($path) {
+            $attributes['image'] = $path;
         }
-
-
-        if (isset($product_request['updated_by'])) {
-            $request_data['updated_by'] = $product_request['updated_by'];
+        try {
+            $place = $this->repository->create($attributes);
+        } catch (Throwable $exception) {
+            $this->images->delete($path);
+            throw $exception;
         }
+        $this->logging->success('CreatePlace', $actorId);
 
-
-        return $request_data;
+        return $place;
     }
 
-    public function uploadImage(array $request, string $en_name)
+    public function update(array $data, Place $place, int $actorId, ?UploadedFile $image = null): Place
     {
-
-        $place_name = str_replace(' ', '_', strtolower($en_name));
-        $extension = $request['image']->getClientOriginalExtension();
-        $file_name = "{$place_name}_" . uniqid() . ".{$extension}";
-
-        $path = public_path("documents/{$request['category_id']}/{$place_name}_product");
-
-        if (!File::exists($path)) {
-            File::makeDirectory($path, 0755, true);
+        $this->ensurePresent($place);
+        $attributes = Arr::only($data, self::FIELDS);
+        if (array_key_exists('status', $attributes) && $attributes['status'] === null) {
+            unset($attributes['status']);
         }
+        $attributes['updated_by'] = $actorId;
+        $oldPath = $place->image;
+        $path = $image ? $this->images->store($image, 'places') : null;
+        if ($path) {
+            $attributes['image'] = $path;
+        }
+        try {
+            $place = $this->repository->update($place, $attributes);
+        } catch (Throwable $exception) {
+            $this->images->delete($path);
+            throw $exception;
+        }
+        if ($path) {
+            $this->images->delete($oldPath);
+        }
+        $this->logging->success('UpdatePlace', $actorId);
 
-        $webp_name = pathinfo($file_name, PATHINFO_FILENAME) . '.webp';
-
-        $image = Image::decode($request['image']);
-
-        // encode to webp
-        $encoded = $image->encodeUsingFormat(
-            Format::WEBP,
-            quality: 85
-        );
-
-        // save encoded image
-        $encoded->save("{$path}/{$webp_name}");
-
-        return "documents/{$request['category_id']}/{$place_name}_product/{$webp_name}";
+        return $place;
     }
 
-
-    // deleteProduct Funtion To Delete Product
-    public function delete(array $request, Place $place)
+    public function delete(Place $place, int $actorId): Place
     {
-        return $this->repository->delete($request, $place);
+        $this->ensurePresent($place);
+        $place = $this->repository->delete($place, $actorId);
+        $this->logging->success('DeletePlace', $actorId);
+
+        return $place;
     }
 
+    /** The caller owns the transaction covering the parent and its dependents. */
+    public function deactivateByCategory(int $categoryId, int $actorId, bool $deleted = false): void
+    {
+        $attributes = ['status' => 0, 'updated_by' => $actorId];
+        if ($deleted) {
+            $attributes['deleted_at'] = now();
+        }
+        $this->repository->updateByCategory($categoryId, $attributes);
+    }
 
+    private function ensurePresent(Place $place): void
+    {
+        if ($place->deleted_at !== null) {
+            throw (new ModelNotFoundException)->setModel(Place::class);
+        }
+    }
 }
-

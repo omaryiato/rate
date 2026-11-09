@@ -6,7 +6,6 @@ use App\Http\Requests\Base\BaseRequest;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Validation\Rule;
 
-
 class UpdateCategory extends BaseRequest
 {
     /**
@@ -24,7 +23,7 @@ class UpdateCategory extends BaseRequest
      */
     public function rules(): array
     {
-        $id = $this->route("category");
+        $id = $this->route('category');
 
         return [
             'en_name' => [
@@ -32,8 +31,7 @@ class UpdateCategory extends BaseRequest
                 'string',
                 'max:255',
                 Rule::unique('category', 'en_name')
-                        ->ignore($id)
-                        ->where('id', $this->input('id')),
+                    ->ignore($id),
             ],
 
             'ar_name' => [
@@ -41,9 +39,11 @@ class UpdateCategory extends BaseRequest
                 'string',
                 'max:255',
                 Rule::unique('category', 'ar_name')
-                        ->ignore($id)
-                        ->where('id', $this->input('id')),
+                    ->ignore($id),
             ],
+
+            'slug' => ['sometimes', 'nullable', 'string', 'max:150', Rule::unique('category', 'slug')->ignore($id)],
+            'sort' => ['sometimes', 'nullable', 'integer', 'min:0'],
 
             'description' => [
                 'nullable',
@@ -53,8 +53,9 @@ class UpdateCategory extends BaseRequest
 
             'image' => [
                 'nullable',
-                'file',
+                'image',
                 'mimes:jpg,jpeg,png,webp',
+                'dimensions:max_width=4096,max_height=4096',
                 'max:5120',
             ],
 
@@ -70,11 +71,6 @@ class UpdateCategory extends BaseRequest
                 'in:0,1',
             ],
 
-            'updated_by' => [
-                'required',
-                'integer',
-                'exists:users,id'
-            ],
         ];
     }
 }

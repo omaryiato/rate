@@ -6,8 +6,6 @@ use App\Http\Requests\Base\BaseRequest;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Validation\Rule;
 
-
-
 class UpdatePlace extends BaseRequest
 {
     /**
@@ -23,10 +21,9 @@ class UpdatePlace extends BaseRequest
      *
      * @return array<string, ValidationRule|array<mixed>|string>
      */
-
     public function rules(): array
     {
-        $id = $this->route("place");
+        $id = $this->route('place');
 
         return [
 
@@ -42,9 +39,8 @@ class UpdatePlace extends BaseRequest
                 'string',
                 'max:255',
                 Rule::unique('places', 'en_name')
-                        ->where('category_id', $this->input('category_id'))
-                        ->ignore($id)
-                        ->where('id', $this->input('id')),
+                    ->where('category_id', $this->input('category_id'))
+                    ->ignore($id),
             ],
 
             'ar_name' => [
@@ -52,9 +48,8 @@ class UpdatePlace extends BaseRequest
                 'string',
                 'max:255',
                 Rule::unique('places', 'ar_name')
-                        ->where('category_id', $this->input('category_id'))
-                        ->ignore($id)
-                        ->where('id', $this->input('id')),
+                    ->where('category_id', $this->input('category_id'))
+                    ->ignore($id),
             ],
 
             'en_description' => [
@@ -89,15 +84,10 @@ class UpdatePlace extends BaseRequest
 
             'image' => [
                 'nullable',
-                'file',
+                'image',
                 'mimes:jpg,jpeg,png,webp',
+                'dimensions:max_width=4096,max_height=4096',
                 'max:5120',
-            ],
-
-            'updated_by' => [
-                'required',
-                'integer',
-                'exists:users,id'
             ],
 
             // 'product_images.*.is_primary' => [
@@ -111,7 +101,6 @@ class UpdatePlace extends BaseRequest
             //     'integer',
             //     'min:0',
             // ],
-
 
             // // Variants
             // 'product_variants' => [
@@ -156,7 +145,7 @@ class UpdatePlace extends BaseRequest
             //     'unique:product_variants,sku',
             //     // Rule::unique('product_variants', 'sku')
             //     //         ->ignore($id)
-            //     //         ->where('id', $this->input('id')),
+            //     //         ,
             // ],
 
             // 'product_variants.*.stock' => [
@@ -177,8 +166,6 @@ class UpdatePlace extends BaseRequest
             //     'in:0,1',
             // ],
 
-
         ];
     }
-
 }

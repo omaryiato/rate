@@ -4,7 +4,6 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
-use App\Http\Resources\AddressResource;
 
 class UserResource extends JsonResource
 {
@@ -23,12 +22,9 @@ class UserResource extends JsonResource
             'phone_number' => $this->phone_number ?? null,
             'email_address' => $this->email_address ?? null,
             'status' => $this->status ?? null,
-            'type' => $this->user_type ?? null,
-            'avatar' =>  asset(str_replace('//', '/', $this->avatar)) ?? null,
+            'type' => $this->type === null ? null : (int) $this->type,
+            'avatar' => $this->avatar ? asset(str_replace('//', '/', $this->avatar)) : null,
             'reviews' => ReviewResource::collection($this->whenLoaded('reviews')),
-
-            'created_by' => $this->created_by ?? null,
-            'updated_by' => $this->updated_by ?? null,
 
             'created_at' => $this->created_at?->format('Y-m-d H:i:s') ?? null,
             'updated_at' => $this->updated_at?->format('Y-m-d H:i:s') ?? null,

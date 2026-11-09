@@ -18,9 +18,8 @@ class ReviewResource extends JsonResource
             'id' => $this->id ?? null,
 
             'user_id' => $this->user_id ?? null,
-            'full_name' => $this->user?->full_name ?? null,
-            'user_name' => $this->user?->user_name ?? null,
-            'avatar' =>  asset(str_replace('//', '/', $this->user?->avatar)) ?? null,
+            'user' => PublicUserResource::make($this->whenLoaded('user')),
+            'full_name' => $this->whenLoaded('user', fn () => $this->user?->full_name),
 
             'place_id' => $this->place_id ?? null,
 

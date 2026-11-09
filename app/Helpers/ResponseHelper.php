@@ -8,30 +8,32 @@ use Symfony\Component\HttpFoundation\Response;
 // This Class For Response Result To return Success or error based on status comes from api
 class ResponseHelper
 {
-
     // This Function To return Success result
     public static function success($data = null, $message = 'Success', int $code = 200): JsonResponse
     {
         return response()->json([
+            'status' => $code,
             'success' => true,
             'message' => $message,
-            'data'    => $data
+            'data' => $data,
         ], $code);
     }
 
-    public static function error($message = 'Error', $errors = null, int $code = 500,): JsonResponse
+    public static function error($message = 'Error', $errors = null, int $code = 500): JsonResponse
     {
         return response()->json([
+            'status' => $code,
             'success' => false,
             'message' => $message,
-            'errors'  => $errors
+            'error' => is_object($errors) ? $errors : (object) (is_array($errors) ? $errors : ['code' => 'REQUEST_ERROR']),
+            'errors' => $errors,
         ], $code);
     }
 
     /**
      * Check if a value is a valid date (any format)
      *
-     * @param mixed $value
+     * @param  mixed  $value
      * @return bool
      */
     public static function isValidDate($value)

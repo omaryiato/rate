@@ -5,14 +5,14 @@ namespace App\Http\Controllers\Client;
 use App\Helpers\ResponseHelper;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Client\Review;
+use App\Http\Requests\Client\StoreFeedbackRequest;
 use App\Http\Resources\CategoryResource;
 use App\Http\Resources\FeedbackResource;
 use App\Http\Resources\PlaceResource;
 use App\Http\Resources\ReviewResource;
 use App\Models\Category;
+use App\Models\Place;
 use App\Services\Client\MainService;
-use Exception;
-use Illuminate\Http\Request;
 
 class MainController extends Controller
 {
@@ -22,7 +22,6 @@ class MainController extends Controller
 
     public function index()
     {
-
 
         return ResponseHelper::success(
             CategoryResource::collection($this->service->getAll()),
@@ -47,49 +46,35 @@ class MainController extends Controller
         );
     }
 
+    public function reviews(Place $place)
+    {
+        return ResponseHelper::success(
+            ReviewResource::collection($this->service->getReviews($place)),
+            ['ar' => 'تم جلب التقييمات بنجاح', 'en' => 'Reviews retrieved successfully'],
+        );
+    }
+
     public function review(Review $request)
     {
-        try{
-
-
-            return ResponseHelper::success(
-                new ReviewResource($this->service->review($request->validated())),
-                [
-                    'en' => trans('validation.review_product', [], 'en'),
-                    'ar' => trans('validation.review_product', [], 'ar'),
-                ],
-                200
-            );
-        } catch(Exception $exception){
-            return ResponseHelper::error(
-                [
-                    'en' => trans('validation.exception_error', [], 'en'),
-                    'ar' => trans('validation.exception_error', [], 'ar'),
-                ],
-                $exception->getMessage(),
-                500);
-        }
+        return ResponseHelper::success(
+            new ReviewResource($this->service->review($request->validated(), (int) $request->user()->id)),
+            [
+                'en' => trans('validation.review_product', [], 'en'),
+                'ar' => trans('validation.review_product', [], 'ar'),
+            ],
+            201
+        );
     }
-    public function feedback(Request $request)
+
+    public function feedback(StoreFeedbackRequest $request)
     {
-        try{
-            return ResponseHelper::success(
-                FeedbackResource::collection($this->service->feedback($request->all())),
-                [
-                    'en' => trans('validation.review_product', [], 'en'),
-                    'ar' => trans('validation.review_product', [], 'ar'),
-                ],
-                200
-            );
-        } catch(Exception $exception){
-            return ResponseHelper::error(
-                [
-                    'en' => trans('validation.exception_error', [], 'en'),
-                    'ar' => trans('validation.exception_error', [], 'ar'),
-                ],
-                $exception->getMessage(),
-                500);
-        }
+        return ResponseHelper::success(
+            FeedbackResource::make($this->service->feedback($request->validated())),
+            [
+                'en' => 'Feedback received successfully',
+                'ar' => 'تم استلام الملاحظة بنجاح',
+            ],
+            201
+        );
     }
-
 }
